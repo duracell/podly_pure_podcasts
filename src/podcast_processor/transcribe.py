@@ -99,7 +99,7 @@ class RemoteWhisperTranscriber(Transcriber):
 	    timeout=config.timeout,
         )
 
-    def transcribe(self, audio_file_path: str, config: RemoteWhisperConfig) -> List[Segment]:
+    def transcribe(self, audio_file_path: str) -> List[Segment]:
         self.logger.info("Using remote whisper")
         audio_chunk_path = audio_file_path + "_parts"
 
