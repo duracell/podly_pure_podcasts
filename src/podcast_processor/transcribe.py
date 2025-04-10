@@ -104,7 +104,7 @@ class RemoteWhisperTranscriber(Transcriber):
         audio_chunk_path = audio_file_path + "_parts"
 
         chunks = split_audio(
-            Path(audio_file_path), Path(audio_chunk_path), config.chunksize * 1024 * 1024
+            Path(audio_file_path), Path(audio_chunk_path), self.config.chunksize * 1024 * 1024
         )
 
         all_segments: List[TranscriptionSegment] = []
