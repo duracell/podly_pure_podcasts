@@ -36,6 +36,7 @@ def test_local_transcribe() -> None:
         LocalWhisperTranscriber,
     )
 
+    logger = logging.getLogger("global_logger")
     transcriber = LocalWhisperTranscriber(logger, "base")
     transcription = transcriber.transcribe("src/tests/file.mp3")
     assert transcription == []
