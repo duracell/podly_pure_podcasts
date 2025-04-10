@@ -36,12 +36,7 @@ def test_local_transcribe() -> None:
         LocalWhisperTranscriber,
     )
 
-    logger = logging.getLogger("global_logger")
-    with open("config/config.yml", "r") as f:
-        config = yaml.safe_load(f)
-
     transcriber = LocalWhisperTranscriber(logger, "base")
-
     transcription = transcriber.transcribe("src/tests/file.mp3")
     assert transcription == []
 
