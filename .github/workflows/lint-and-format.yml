@@ -1,12 +1,7 @@
 name: Python Linting, Formatting, and Testing
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch
 
 jobs:
   lint-format-test:
