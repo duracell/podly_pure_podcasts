@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -42,6 +42,13 @@ class LocalWhisperConfig(BaseModel):
     model: str = "base"
 
 
+class GroqWhisperConfig(BaseModel):
+    whisper_type: Literal["groq"] = "groq"
+    api_key: Optional[str] = None  # Reads from GROQ_API_KEY env var if None
+    model: str = "whisper-large-v3-turbo"  # Default Groq model
+    timeout_sec: int = 600
+
+
 class Config(BaseModel):
     llm_api_key: Optional[str] = Field(default=None, alias="openai_api_key")
     llm_model: str = Field(default="gpt-4o", alias="openai_model")
@@ -60,11 +67,13 @@ class Config(BaseModel):
     background_update_interval_minute: Optional[int] = None
     job_timeout: int = 10800  # Default to 3 hours if not set
     threads: int = 1
-    whisper: Optional[LocalWhisperConfig | RemoteWhisperConfig | TestWhisperConfig] = (
-        Field(
-            default=None,
-            discriminator="whisper_type",
-        )
+    whisper: Optional[
+        Union[
+            LocalWhisperConfig, RemoteWhisperConfig, TestWhisperConfig, GroqWhisperConfig
+        ]
+    ] = Field(
+        default=None,
+        discriminator="whisper_type",
     )
     remote_whisper: Optional[bool] = Field(
         default=False,
