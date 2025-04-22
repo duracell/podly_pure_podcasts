@@ -13,7 +13,7 @@ def get_audio_duration_ms(file_path: str) -> Optional[int]:
         return int(duration_milliseconds)
     except ffmpeg.Error as e:
         print("An error occurred while trying to probe the file:")
-        print(e.stderr.decode() if hasattr(e, "stderr") else str(e))
+        print(e.stderr.decode()
         return None
     except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Unexpected error probing file {file_path}: {e}")

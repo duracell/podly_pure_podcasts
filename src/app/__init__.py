@@ -14,6 +14,9 @@ config = get_config("config/config.yml")
 setup_logger("global_logger", "config/app.log")
 logger = logging.getLogger("global_logger")
 
+# Suppress verbose DEBUG logs from the groq library
+logging.getLogger("groq._base_client").setLevel(logging.INFO)
+
 
 def setup_dirs() -> None:
     if not os.path.exists("processing"):
