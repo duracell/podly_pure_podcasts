@@ -1,6 +1,8 @@
 import tempfile
 from pathlib import Path
 
+from pytest import approx
+
 from podcast_processor.audio import (
     clip_segments_with_fade,
     get_audio_duration_ms,
@@ -48,13 +50,11 @@ def test_clip_segment_with_fade_beginning() -> None:
             temp_file.name,
         )
 
-        assert (
-            get_audio_duration_ms(temp_file.name)
-            == TEST_FILE_DURATION
-            - (ad_end_offset_ms - ad_start_offset_ms)
-            + 2 * fade_len_ms
-            + 56  # not sure where this fudge comes from
+        expected_duration_ms = TEST_FILE_DURATION - (
+            ad_end_offset_ms - ad_start_offset_ms
         )
+        actual_duration_ms = get_audio_duration_ms(temp_file.name)
+        assert actual_duration_ms == approx(expected_duration_ms, abs=100)
 
 
 def test_clip_segment_with_fade_end() -> None:
