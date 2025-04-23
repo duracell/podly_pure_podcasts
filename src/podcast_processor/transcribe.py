@@ -11,7 +11,7 @@ from openai.types.audio.transcription_segment import TranscriptionSegment
 from pydantic import BaseModel
 
 from podcast_processor.audio import split_audio
-from shared.config import RemoteWhisperConfig, GroqWhisperConfig
+from shared.config import RemoteWhisperConfig
 from groq import Groq
 
 
@@ -89,72 +89,27 @@ class LocalWhisperTranscriber(Transcriber):
         return self.local_seg_to_seg(typed_segments)
 
 
-class GroqTranscriber(Transcriber):
-    def __init__(self, logger: logging.Logger, config: GroqWhisperConfig):
-        self.logger = logger
-        self.config = config
-        self.client = Groq(api_key=config.api_key, timeout=config.timeout_sec)
-
-    def transcribe(self, audio_file_path: str) -> List[Segment]:
-        self.logger.info(f"Transcribing with Groq model: {self.config.model}")
-        start_time = time.time()
-        try:
-            with open(audio_file_path, "rb") as audio_file:
-                transcription = self.client.audio.transcriptions.create(
-                    file=(audio_file_path, audio_file.read()),
-                    model=self.config.model,
-                    response_format="verbose_json",
-                    # timestamp_granularities=["segment"], # seems groq whisper doesn't support this yet
-                )
-        except Exception as e:
-            self.logger.error(f"Groq transcription failed: {e}")
-            raise
-
-        end_time = time.time()
-        elapsed = end_time - start_time
-        self.logger.info(f"Groq transcription completed in {elapsed:.2f} seconds")
-
-        # Assuming Groq's verbose_json output is compatible with OpenAI's
-        # and contains a 'segments' list.
-        # If the structure is different, this mapping needs adjustment.
-        segments_data = getattr(transcription, "segments", None)
-        if segments_data is None:
-            self.logger.warning(
-                "Groq response did not contain 'segments'. Trying full text." + str(transcription)
-            )
-            # Fallback or specific handling if segments are not available
-            # For now, returning a single segment with the full text if available
-            full_text = getattr(transcription, "text", "")
-            if full_text:
-                # We don't have timing info, so we can't accurately create segments.
-                # Returning a single segment might break downstream processing.
-                # Consider raising an error or returning an empty list.
-                self.logger.error("Cannot create segments from Groq response without segment data.")
-                return [] # Or raise an exception
-            else:
-                 self.logger.error("Groq response had neither segments nor text.")
-                 return []
-
-
-        return [
-            Segment(start=seg["start"], end=seg["end"], text=seg["text"])
-            for seg in segments_data
-        ]
-
-
 class RemoteWhisperTranscriber(Transcriber):
     def __init__(self, logger: logging.Logger, config: RemoteWhisperConfig):
         self.logger = logger
         self.config = config
 
-        self.openai_client = OpenAI(
-            base_url=config.base_url,
-            api_key=config.api_key,
-            timeout=config.timeout_sec,
-        )
+        if config.whisper_type == "remote":
+            self.client = OpenAI(
+                base_url=config.base_url,
+                api_key=config.api_key,
+                timeout=config.timeout_sec,
+            )
+        elif config.whisper_type == "groq":
+            self.client = Groq(
+                api_key=config.api_key,
+                timeout=config.timeout_sec
+            )
+        else:
+            raise ValueError(f"Unsupported whisper_type in RemoteWhisperConfig: {config.whisper_type}")
 
     def transcribe(self, audio_file_path: str) -> List[Segment]:
-        self.logger.info("Using remote whisper")
+        self.logger.info("Using remote whisper service + " + self.config.whisper_type + " with model: " + self.config.model)
         audio_chunk_path = audio_file_path + "_parts"
 
         chunks = split_audio(
@@ -199,7 +154,7 @@ class RemoteWhisperTranscriber(Transcriber):
         with open(chunk_path, "rb") as f:
             self.logger.info(f"Transcribing chunk {chunk_path}")
 
-            transcription = self.openai_client.audio.transcriptions.create(
+            transcription = self.client.audio.transcriptions.create(
                 model=self.config.model,
                 file=f,
                 timestamp_granularities=["segment"],
@@ -209,8 +164,21 @@ class RemoteWhisperTranscriber(Transcriber):
 
             self.logger.debug("Got transcription")
 
-            segments = transcription.segments
-            assert segments is not None
+            raw_segments = transcription.segments
+            assert raw_segments is not None
+
+            # Convert dicts to TranscriptionSegment objects if using Groq
+            if self.config.whisper_type == "groq":
+                try:
+                    # Assuming Groq returns dicts with compatible keys
+                    segments = [TranscriptionSegment(**seg) for seg in raw_segments]
+                except Exception as e:
+                    self.logger.error(f"Error converting Groq segments to TranscriptionSegment: {e}")
+                    self.logger.error(f"Raw segment data: {raw_segments}")
+                    raise # Re-raise the error after logging
+            else:
+                # Assume OpenAI client already returned List[TranscriptionSegment]
+                segments = raw_segments
 
             self.logger.debug(f"Got {len(segments)} segments")
 

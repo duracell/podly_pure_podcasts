@@ -28,11 +28,11 @@ class TestWhisperConfig(BaseModel):
 
 
 class RemoteWhisperConfig(BaseModel):
-    whisper_type: Literal["remote"] = "remote"
-    base_url: str = "https://api.openai.com/v1"
+    whisper_type: Literal["remote", "groq"] = "remote"
+    base_url: str = "https://api.openai.com/v1" # ignored if 
     api_key: str
     language: str = "en"
-    model: str = "whisper-1"  # openai model, use your own maybe
+    model: str  # openai model, use your own maybe
     timeout_sec: int = 600
     chunksize_mb: int = 24
 
@@ -40,13 +40,6 @@ class RemoteWhisperConfig(BaseModel):
 class LocalWhisperConfig(BaseModel):
     whisper_type: Literal["local"] = "local"
     model: str = "base"
-
-
-class GroqWhisperConfig(BaseModel):
-    whisper_type: Literal["groq"] = "groq"
-    api_key: Optional[str] = None  # Reads from GROQ_API_KEY env var if None
-    model: str = "whisper-large-v3-turbo"  # Default Groq model
-    timeout_sec: int = 600
 
 
 class Config(BaseModel):
@@ -69,7 +62,7 @@ class Config(BaseModel):
     threads: int = 1
     whisper: Optional[
         Union[
-            LocalWhisperConfig, RemoteWhisperConfig, TestWhisperConfig, GroqWhisperConfig
+            LocalWhisperConfig, RemoteWhisperConfig, TestWhisperConfig
         ]
     ] = Field(
         default=None,
