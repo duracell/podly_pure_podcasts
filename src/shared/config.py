@@ -29,7 +29,7 @@ class TestWhisperConfig(BaseModel):
 
 class RemoteWhisperConfig(BaseModel):
     whisper_type: Literal["remote", "groq"] = "remote"
-    base_url: str = "https://api.openai.com/v1" # ignored if 
+    base_url: str = "https://api.openai.com/v1"  # ignored if
     api_key: str
     language: str = "en"
     model: str  # openai model, use your own maybe
@@ -61,9 +61,7 @@ class Config(BaseModel):
     job_timeout: int = 10800  # Default to 3 hours if not set
     threads: int = 1
     whisper: Optional[
-        Union[
-            LocalWhisperConfig, RemoteWhisperConfig, TestWhisperConfig
-        ]
+        Union[LocalWhisperConfig, RemoteWhisperConfig, TestWhisperConfig]
     ] = Field(
         default=None,
         discriminator="whisper_type",
@@ -103,9 +101,13 @@ class Config(BaseModel):
             assert (
                 self.llm_api_key is not None
             ), "must supply api key to use remote whisper"
+            assert (
+                self.whisper_model is not None
+            ), "must supply whisper model to use remote whisper (old style)"
             self.whisper = RemoteWhisperConfig(
                 api_key=self.llm_api_key,
                 base_url=self.openai_base_url or "https://api.openai.com/v1",
+                model=self.whisper_model,
             )
         else:
             assert (

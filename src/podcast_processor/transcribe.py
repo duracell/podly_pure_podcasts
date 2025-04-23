@@ -3,16 +3,16 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Union
 
 import whisper  # type: ignore[import-untyped]
+from groq import Groq
 from openai import OpenAI
 from openai.types.audio.transcription_segment import TranscriptionSegment
 from pydantic import BaseModel
 
 from podcast_processor.audio import split_audio
 from shared.config import RemoteWhisperConfig
-from groq import Groq
 
 
 class Segment(BaseModel):
@@ -90,6 +90,8 @@ class LocalWhisperTranscriber(Transcriber):
 
 
 class RemoteWhisperTranscriber(Transcriber):
+    client: Union[OpenAI, Groq]
+
     def __init__(self, logger: logging.Logger, config: RemoteWhisperConfig):
         self.logger = logger
         self.config = config
@@ -101,15 +103,19 @@ class RemoteWhisperTranscriber(Transcriber):
                 timeout=config.timeout_sec,
             )
         elif config.whisper_type == "groq":
-            self.client = Groq(
-                api_key=config.api_key,
-                timeout=config.timeout_sec
-            )
+            self.client = Groq(api_key=config.api_key, timeout=config.timeout_sec)
         else:
-            raise ValueError(f"Unsupported whisper_type in RemoteWhisperConfig: {config.whisper_type}")
+            raise ValueError(
+                f"Unsupported whisper_type in RemoteWhisperConfig: {config.whisper_type}"
+            )
 
     def transcribe(self, audio_file_path: str) -> List[Segment]:
-        self.logger.info("Using remote whisper service + " + self.config.whisper_type + " with model: " + self.config.model)
+        self.logger.info(
+            "Using remote whisper service + "
+            + self.config.whisper_type
+            + " with model: "
+            + self.config.model
+        )
         audio_chunk_path = audio_file_path + "_parts"
 
         chunks = split_audio(
@@ -173,9 +179,11 @@ class RemoteWhisperTranscriber(Transcriber):
                     # Assuming Groq returns dicts with compatible keys
                     segments = [TranscriptionSegment(**seg) for seg in raw_segments]
                 except Exception as e:
-                    self.logger.error(f"Error converting Groq segments to TranscriptionSegment: {e}")
+                    self.logger.error(
+                        f"Error converting Groq segments to TranscriptionSegment: {e}"
+                    )
                     self.logger.error(f"Raw segment data: {raw_segments}")
-                    raise # Re-raise the error after logging
+                    raise  # Re-raise the error after logging
             else:
                 # Assume OpenAI client already returned List[TranscriptionSegment]
                 segments = raw_segments
