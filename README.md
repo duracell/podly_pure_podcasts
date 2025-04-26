@@ -1,7 +1,8 @@
 <h1 align="center">IMPORTANT!</h1>
 <p align="center">This is a fork of <a href="https://github.com/jdrbc/podly_pure_podcasts">jdrbc/podly_pure_podcasts</a> and has specific changes for me. If I have time, I'll describe them in more details, currently groq is included, but not in the same way as it's planned in the upsteam.</p>
-<hr/>
-<h1>Original README</h1>
+<hr>
+<br><br><br>
+<h1>README</h1>
 <h2 align="center">
 <img width="50%" src="src/app/static/images/logos/logo_with_text.png" />
 
