@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -28,11 +28,13 @@ class TestWhisperConfig(BaseModel):
 
 
 class RemoteWhisperConfig(BaseModel):
-    whisper_type: Literal["remote"] = "remote"
-    base_url: str = "https://api.openai.com/v1"
+    whisper_type: Literal["remote", "groq"] = "remote"
+    base_url: str = "https://api.openai.com/v1"  # ignored if
     api_key: str
     language: str = "en"
-    model: str = "whisper-1"  # openai model, use your own maybe
+    model: str  # openai model, use your own maybe
+    timeout_sec: int = 600
+    chunksize_mb: int = 24
 
 
 class LocalWhisperConfig(BaseModel):
@@ -41,8 +43,8 @@ class LocalWhisperConfig(BaseModel):
 
 
 class Config(BaseModel):
-    llm_api_key: Optional[str] = Field(default=None, alias="openai_api_key")
-    llm_model: str = Field(default="gpt-4o", alias="openai_model")
+    llm_api_key: Optional[str] = Field(default=None)
+    llm_model: str = Field(default="gpt-4o")
     openai_base_url: Optional[str] = None
     openai_max_tokens: int = 4096
     openai_timeout: int = 300
@@ -58,11 +60,11 @@ class Config(BaseModel):
     background_update_interval_minute: Optional[int] = None
     job_timeout: int = 10800  # Default to 3 hours if not set
     threads: int = 1
-    whisper: Optional[LocalWhisperConfig | RemoteWhisperConfig | TestWhisperConfig] = (
-        Field(
-            default=None,
-            discriminator="whisper_type",
-        )
+    whisper: Optional[
+        Union[LocalWhisperConfig, RemoteWhisperConfig, TestWhisperConfig]
+    ] = Field(
+        default=None,
+        discriminator="whisper_type",
     )
     remote_whisper: Optional[bool] = Field(
         default=False,
@@ -80,7 +82,7 @@ class Config(BaseModel):
     def redacted(self) -> Config:
         return self.model_copy(
             update={
-                "openai_api_key": "X" * 10,
+                "llm_api_key": "X" * 10,
             },
             deep=True,
         )
@@ -99,9 +101,13 @@ class Config(BaseModel):
             assert (
                 self.llm_api_key is not None
             ), "must supply api key to use remote whisper"
+            assert (
+                self.whisper_model is not None
+            ), "must supply whisper model to use remote whisper (old style)"
             self.whisper = RemoteWhisperConfig(
                 api_key=self.llm_api_key,
                 base_url=self.openai_base_url or "https://api.openai.com/v1",
+                model=self.whisper_model,
             )
         else:
             assert (
@@ -129,5 +135,11 @@ def get_config(path: str) -> Config:
 
 def get_config_from_str(config_str: str) -> Config:
     config_dict = yaml.safe_load(config_str)
+
+    # translate old open ai values to agnostic values for backwards compatibility
+    if "llm_api_key" not in config_dict and "openai_api_key" in config_dict:
+        config_dict["llm_api_key"] = config_dict["openai_api_key"]
+    if "llm_model" not in config_dict and "openai_model" in config_dict:
+        config_dict["llm_model"] = config_dict["openai_model"]
 
     return Config(**config_dict)
