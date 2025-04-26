@@ -17,14 +17,15 @@
 
 ## Overview
 
-Podly uses Whisper and Chat GPT to remove ads from podcasts.
+Podly uses ASR (automatic speech recognition/speech to text) and LLM (large language model) to remove ads from podcasts.
+Currently it supports OpenAI Whisper (local, remote) and Groq as ASR. For the LLM it supports OpenAI (Chat)GPT and Google Gemini.
 
 Here's how it works:
 
 - You request an episode
 - Podly downloads the requested episode
-- Whisper transcribes the episode
-- Chat GPT labels ad segments
+- ASR transcribes the episode
+- LLM labels ad segments
 - Podly removes the ad segments
 - Podly delivers the ad-free version of the podcast to you
 
@@ -38,7 +39,7 @@ Here's how it works:
 - Open a podcast app & subscribe to the podly endpoint
   - For example, `http://localhost:5001/feed/1`
 - Select an episode & download
-- Wait patiently :). Transcription is the slowest part & takes about 1 minute per 15 minutes of podcast on an M3 macbook.
+- Wait patiently :). Transcription is the slowest part & takes about 1 minute per 15 minutes of podcast on an M3 macbook, but only some seconds if using Groq.
 
 ## How To Run
 
