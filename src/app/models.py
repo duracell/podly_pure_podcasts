@@ -19,6 +19,21 @@ class Feed(db.Model):  # type: ignore[name-defined, misc]
     author = db.Column(db.Text)
     rss_url = db.Column(db.Text, unique=True, nullable=False)
     image_url = db.Column(db.Text)
+    language = db.Column(db.String(20), nullable=True)  # e.g., 'en-US'
+    itunes_author = db.Column(db.Text, nullable=True)
+    itunes_subtitle = db.Column(db.Text, nullable=True)
+    itunes_summary = db.Column(db.Text, nullable=True)
+    itunes_explicit = db.Column(
+        db.Boolean, nullable=True
+    )  # True (yes) / False (no) / None (unknown)
+    itunes_type = db.Column(db.String(20), nullable=True)  # 'episodic' or 'serial'
+    itunes_owner_name = db.Column(db.Text, nullable=True)
+    itunes_owner_email = db.Column(db.Text, nullable=True)
+    itunes_keywords = db.Column(db.Text, nullable=True)  # Comma-separated keywords
+    itunes_categories_json = db.Column(
+        db.Text, nullable=True
+    )  # Store categories as JSON string
+    # itunes:image is handled by image_url
 
     posts = db.relationship(
         "Post", backref="feed", lazy=True, order_by="Post.release_date.desc()"
@@ -39,9 +54,21 @@ class Post(db.Model):  # type: ignore[name-defined, misc]
     unprocessed_audio_path = db.Column(db.Text)
     processed_audio_path = db.Column(db.Text)
     description = db.Column(db.Text)
-    release_date = db.Column(db.Date)
-    duration = db.Column(db.Integer)
+    release_date = db.Column(db.DateTime)
+    duration = db.Column(db.Integer)  # Corresponds to itunes_duration in seconds
     whitelisted = db.Column(db.Boolean, default=False, nullable=False)
+    itunes_subtitle = db.Column(db.Text, nullable=True)
+    itunes_summary = db.Column(db.Text, nullable=True)  # Often same as description
+    itunes_explicit = db.Column(
+        db.Boolean, nullable=True
+    )  # True (yes) / False (no) / None (unknown)
+    itunes_episode_type = db.Column(
+        db.String(20), nullable=True
+    )  # 'full', 'trailer', or 'bonus'
+    itunes_image_url = db.Column(
+        db.Text, nullable=True
+    )  # URL for episode-specific image
+    # episode, season might be added later if needed
 
     transcript = db.relationship("Transcript", uselist=False, backref="post")
 
