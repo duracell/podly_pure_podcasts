@@ -170,6 +170,10 @@ class RemoteWhisperTranscriber(Transcriber):
 
             self.logger.debug("Got transcription")
 
+            # verbose_json guarantees segments attribute
+            assert hasattr(
+                transcription, "segments"
+            ), "Transcription object missing 'segments' attribute despite verbose_json format."
             raw_segments = transcription.segments
             assert raw_segments is not None
 
@@ -177,7 +181,18 @@ class RemoteWhisperTranscriber(Transcriber):
             if self.config.whisper_type == "groq":
                 try:
                     # Assuming Groq returns dicts with compatible keys
-                    segments = [TranscriptionSegment(**seg) for seg in raw_segments]
+                    segments = [
+                        TranscriptionSegment(**seg)
+                        for seg in raw_segments
+                        if isinstance(seg, dict)
+                    ]
+                    # Handle potential non-dict items if necessary, though unlikely
+                    if len(segments) != len(raw_segments):
+                        self.logger.warning(
+                            "Some items in raw_segments from Groq were not dictionaries "
+                            "and were skipped."
+                        )
+
                 except Exception as e:
                     self.logger.error(
                         f"Error converting Groq segments to TranscriptionSegment: {e}"
