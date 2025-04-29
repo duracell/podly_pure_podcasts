@@ -133,8 +133,18 @@ def _process_feed_entry(
         return None, False
 
     guid = entry_data.id
-    published_date = parse_datetime(entry_data.published_parsed)
+    # Convert time.struct_time from feedparser to datetime
+    published_parsed = entry_data.get("published_parsed")
+    release_date = None
+    if published_parsed:
+        try:
+            release_date = datetime.datetime(*published_parsed[:6])
+        except (TypeError, ValueError):
+            logger.warning(
+                f"Could not parse published_parsed for post: {entry_data.get('title', 'N/A')}"
+            )
 
+    # Use guid and feed_id as composite key
     post = db.session.get(Post, (feed.id, guid))
     changed = False
 
@@ -143,7 +153,8 @@ def _process_feed_entry(
     link = entry_data.get("link")
     description = entry_data.get("description") or entry_data.get("summary")
     duration_str = entry_data.get("itunes_duration")
-    duration = get_duration(duration_str) if duration_str else None
+    # Use get_duration helper for parsing
+    duration = get_duration(entry_data) # Pass the whole entry dict
     explicit = _get_itunes_explicit(entry_data)
     enclosure = next(
         (
@@ -159,8 +170,9 @@ def _process_feed_entry(
 
     if post:
         # Post exists, check for updates
-        if post.published_date != published_date:
-            post.published_date = published_date
+        # Compare the newly parsed release_date
+        if post.release_date != release_date:
+            post.release_date = release_date
             changed = True
         if post.title != title:
             post.title = title
@@ -191,7 +203,7 @@ def _process_feed_entry(
         post = Post(
             feed_id=feed.id,
             guid=guid,
-            published_date=published_date,
+            published_date=release_date, # Use the parsed datetime here
             title=title,
             link=link,
             description=description,
