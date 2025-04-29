@@ -143,32 +143,70 @@ def _process_feed_entry(
                 f"Could not parse published_parsed for post: {entry_data.get('title', 'N/A')}"
             )
 
-    # Use guid and feed_id as composite key
-    post = db.session.get(Post, (feed.id, guid))
+    # Fetch existing post using feed_id and guid, handling potential date format errors
+    post = None # Initialize post to None
+    try:
+        # This is the initial query (previously line 147)
+        post = Post.query.filter_by(feed_id=feed.id, guid=guid).first()
+    except TypeError as e:
+        # Catch specific error caused by incompatible date format in DB during object loading
+        if "fromisoformat: argument must be str" in str(e):
+            logger.error(
+                f"Failed to load existing post by guid {guid} for feed {feed.id} "
+                f"due to incompatible release_date format in DB. Skipping update for this entry.",
+                exc_info=True # Include traceback for context
+            )
+            # Skip processing this entry entirely as we can't load the existing one
+            return None, False
+        else:
+            # Re-raise any other unexpected TypeError
+            raise e
+
+    # Extract common attributes first, needed for download_url check
+    title = entry_data.get("title")
+    link = entry_data.get("link") # Extracted but not used for Post model
+    description = entry_data.get("description") or entry_data.get("summary")
+    duration = get_duration(entry_data)
+    explicit = _get_itunes_explicit(entry_data)
+    download_url = find_audio_link(entry_data)
+
+    # If no post found by GUID (either didn't exist or failed to load due to date format),
+    # try finding by download_url to handle potential GUID changes
+    if post is None and download_url:
+        try:
+            post_by_url = Post.query.filter_by(feed_id=feed.id, download_url=download_url).first()
+            if post_by_url:
+                logger.warning(
+                    f"Found existing post by download_url ({download_url}) for feed {feed.id} "
+                    f"but not by guid ({guid}). Updating existing post {post_by_url.id} and its guid."
+                )
+                post = post_by_url
+                # IMPORTANT: Update the GUID on the existing post if it differs
+                if post.guid != guid:
+                    post.guid = guid
+                    # Mark as changed so the session commits the GUID update
+                    # We will set changed = True below anyway if other fields differ
+        except TypeError as e:
+            # Catch specific error caused by incompatible date format in DB during object loading
+            if "fromisoformat: argument must be str" in str(e):
+                logger.error(
+                    f"Failed to load existing post by download_url {download_url} for feed {feed.id} "
+                    f"due to incompatible release_date format in DB. Skipping update for this entry.",
+                    exc_info=True # Include traceback for context
+                )
+                # Skip processing this entry entirely as we can't load the existing one
+                return None, False
+            else:
+                # Re-raise any other unexpected TypeError
+                raise e
+
     changed = False
 
-    # Extract common attributes
-    title = entry_data.get("title")
-    link = entry_data.get("link")
-    description = entry_data.get("description") or entry_data.get("summary")
-    duration_str = entry_data.get("itunes_duration")
-    # Use get_duration helper for parsing
-    duration = get_duration(entry_data) # Pass the whole entry dict
-    explicit = _get_itunes_explicit(entry_data)
-    enclosure = next(
-        (
-            link
-            for link in entry_data.get("links", [])
-            if link.get("rel") == "enclosure"
-        ),
-        None,
-    )
-    enclosure_url = enclosure.get("href") if enclosure else None
-    enclosure_length = int(enclosure.get("length", 0)) if enclosure else 0
-    enclosure_type = enclosure.get("type") if enclosure else None
+    # --- Post Update/Creation Logic --- 
 
     if post:
-        # Post exists, check for updates
+        # Post exists (found by guid or download_url), check for updates
+        # (Ensure guid update from above is handled)
         # Compare the newly parsed release_date
         if post.release_date != release_date:
             post.release_date = release_date
@@ -176,41 +214,26 @@ def _process_feed_entry(
         if post.title != title:
             post.title = title
             changed = True
-        if post.link != link:
-            post.link = link
-            changed = True
         if post.description != description:
             post.description = description
             changed = True
         if post.duration != duration:
             post.duration = duration
             changed = True
-        if post.explicit != explicit:
-            post.explicit = explicit
-            changed = True
-        if post.enclosure_url != enclosure_url:
-            post.enclosure_url = enclosure_url
-            changed = True
-        if post.enclosure_length != enclosure_length:
-            post.enclosure_length = enclosure_length
-            changed = True
-        if post.enclosure_type != enclosure_type:
-            post.enclosure_type = enclosure_type
+        if post.itunes_explicit != explicit:
+            post.itunes_explicit = explicit
             changed = True
     else:
         # Post does not exist, create it
         post = Post(
             feed_id=feed.id,
             guid=guid,
-            published_date=release_date, # Use the parsed datetime here
+            download_url=find_audio_link(entry),
+            release_date=release_date, # Use the correct column name 'release_date'
             title=title,
-            link=link,
             description=description,
             duration=duration,
-            explicit=explicit,
-            enclosure_url=enclosure_url,
-            enclosure_length=enclosure_length,
-            enclosure_type=enclosure_type,
+            itunes_explicit=explicit,
         )
         changed = True
         logger.info(f"Adding new post: {guid} - {title}")
@@ -269,18 +292,18 @@ def refresh_feed(feed: Feed) -> None:
             logger.info(f"Committed feed/post changes for feed ID: {feed.id}")
         except IntegrityError as e:
             logger.error(
-                f"Database integrity error committing changes for feed {feed.url}: {e}"
+                f"Database integrity error committing changes for feed {feed.rss_url}: {e}"
             )
             db.session.rollback()
         except (
             Exception  # pylint: disable=broad-exception-caught
         ) as e:  # Catch other potential commit errors
             logger.error(
-                f"Error committing changes for feed {feed.url}: {e}", exc_info=True
+                f"Error committing changes for feed {feed.rss_url}: {e}", exc_info=True
             )
             db.session.rollback()
     else:
-        logger.info(f"No feed/post changes detected for feed: {feed.url}")
+        logger.info(f"No feed/post changes detected for feed: {feed.rss_url}")
 
 
 def add_or_refresh_feed(url: str) -> Feed:
@@ -441,9 +464,54 @@ def generate_feed_xml(feed: Feed) -> str:
 
     # --- Feed Items (Posts) ---
     server_prefix = config.server or ""
-    for post in sorted(
-        feed.posts, key=lambda p: p.release_date or datetime.datetime.min, reverse=True
-    ):
+    
+    # --- Two-Pass Loading to handle date format errors --- 
+    # Pass 1: Get only the IDs of posts for this feed
+    try:
+        post_ids = db.session.query(Post.id).filter(Post.feed_id == feed.id).all()
+        post_ids = [pid[0] for pid in post_ids] # Extract IDs from tuples
+    except Exception as e:
+        logger.error(f"Failed to query post IDs for feed {feed.id}: {e}", exc_info=True)
+        post_ids = [] # Proceed with empty list if query fails
+
+    # Pass 2: Fetch full Post objects individually and filter out problematic ones
+    processed_posts = []
+    for post_id in post_ids:
+        try:
+            # Fetch the full post object by ID
+            post = db.session.get(Post, post_id)
+            if post is None:
+                 logger.warning(f"Post with ID {post_id} found in query but not loaded via session.get, skipping.")
+                 continue # Skip if post wasn't found by ID for some reason
+
+            # Optional: Force access to date here if session.get is too lazy, but usually it loads fully.
+            # _ = post.release_date 
+            
+            processed_posts.append(post)
+
+        except TypeError as e:
+            if "fromisoformat: argument must be str" in str(e):
+                logger.error(
+                    f"Skipping post ID {post_id} in feed generation for feed {feed.id} "
+                    f"due to incompatible release_date format in DB.",
+                    exc_info=False
+                )
+            else:
+                # Re-raise other TypeErrors
+                raise e
+        except Exception as e:
+            # Catch other potential errors during individual post loading
+            logger.error(f"Failed to load post ID {post_id} for feed {feed.id}: {e}", exc_info=True)
+
+
+    # Sort the successfully processed posts
+    sorted_posts = sorted(
+        processed_posts, 
+        key=lambda p: getattr(p, 'release_date', None) or datetime.datetime.min, 
+        reverse=True
+    )
+
+    for post in sorted_posts:
         _add_feed_entry_to_generator(fg, post, server_prefix)
 
     logger.info(f"Feedgen XML generated for feed with ID: {feed.id}")
