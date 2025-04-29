@@ -13,7 +13,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app import config, db, logger
 from app.models import Feed, Post
-from app.utils import parse_datetime  # type: ignore[import-not-found]
 from shared.podcast_downloader import find_audio_link
 
 # --- Helper functions for safe data extraction ---
